@@ -1,6 +1,6 @@
 # Muhuri — Splice-Proof Attenuating Delegation Credentials for Agent Chains
 
-**Version 0.1 · reference implementation · June 2026**
+**Version 0.2 · reference implementation · June 2026**
 
 A Muhuri is a single, compact, offline-verifiable credential that carries an
 entire AI-agent delegation chain — from an accountable human principal down to
@@ -108,7 +108,7 @@ Given the chain and one trust anchor (the root principal's public key):
 - **Monotonic attenuation by construction.** Authority is the AND of all
   caveats; a hop can only add caveats; no representable operation widens scope —
   so holder-side offline narrowing is safe even if the holder is malicious.
-  (Scope/Intent gap.)
+  (Composition / attenuation gap.)
 - **Splice resistance.** A link cannot be grafted across chains; its `dgr` and
   `prev` pin it to one specific parent. (Composition gap; fixes the RFC 8693
   weakness.)
@@ -119,14 +119,18 @@ Given the chain and one trust anchor (the root principal's public key):
   (Defeats the Salesloft/Vercel theft class and replay.)
 - **Per-action gating.** The concrete request is checked against scope *and*
   freshly signed by the holder, so an injected instruction cannot exceed grant.
-  (Point/Trajectory gap; defeats the Grok side-channel class.)
+  (Defeats the Grok scope-escalation class. This is per-action scope, not a
+  trajectory mechanism: it does not reason over a *sequence* of in-scope actions.)
 - **Human-in-the-loop.** A `requires_approval` third-party caveat binds a named
   approver's signature to the specific high-value action.
 - **Granular revocation.** Revoke any `link_id` to kill a whole subtree or a
   single branch.
 
-This covers all six authority-laundering gap families (Scope/Intent,
-Point/Trajectory, Lifetime, Principal, Provenance, Composition).
+Muhuri is a complete answer to the composition/attenuation gap, and adds rooted
+accountability and holder-of-key possession on top. It is deliberately *not* a
+purpose or trajectory mechanism, and only partially addresses lifetime. See
+`docs/standards.md` for the honest per-gap-family scorecard (YES on attenuation,
+partial on lifetime, no on purpose/trajectory/principal-isolation/provenance).
 
 ---
 
@@ -175,7 +179,7 @@ public key; clocks are loosely synchronized (PoP skew default ±60s).
   provenance artifact that travels *with* the task and needs no reachable AS;
   it directly closes the Feb-2026 splicing weakness via the `dgr==parent.dge`
   and `prev==parent.link_id` bindings the WG proposed.
-- **`draft-niyikiza-oauth-attenuating-agent-tokens-00` (Mar 2026), AIP, HDP:**
+- **`draft-niyikiza-oauth-attenuating-agent-tokens-01` (2026-06-15), AIP, HDP:**
   same problem space, all pre-standardization. Muhuri is a working, tested
   reference of the splice-proof + holder-of-key + monotonic-scope combination
   that those drafts describe but that no surveyed tool fully implements.

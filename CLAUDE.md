@@ -18,8 +18,9 @@ Current version: `0.2.0`. Reference impl language: Python 3.11+. Demo: vanilla J
 
 ```bash
 # from repo root
-pip install -e . --break-system-packages   # install the package
-python -m pytest tests/ -q                  # run the suite (expect 27 passing)
+pip install -e ".[test]" --break-system-packages   # install package + test deps
+python -m pytest tests/ -q                  # run the suite (expect 48 passing)
+python tools/gen_vectors.py --check         # cross-impl vectors are not stale
 python demo.py                              # CLI narrative demo (all attacks blocked)
 # open muhuri-demo.html in a browser for the interactive demo
 ```
@@ -35,13 +36,19 @@ muhuri/                 reference implementation
   pop.py                 proof-of-possession + NonceStore (single-use) + audience
   revocation.py          revocation interfaces (honest: no instant offline revoke)
   verify.py              verify_chain(), authorize() — the full per-request gate
-tests/test_muhuri.py    27 tests: 18 security properties + R1–R7 regressions
+tests/test_muhuri.py    27 adversarial + R1–R7 regression tests
+tests/test_properties.py Hypothesis fuzzing of the 3 load-bearing invariants
+tests/test_vectors.py    replays tests/vectors.json + wire determinism
+tests/vectors.json       13 cross-implementation (chain, request, decision) vectors
+tools/gen_vectors.py     deterministic vector generator (--check in CI)
 demo.py                  CLI narrative demo
 muhuri-demo.html        interactive browser demo (real WebCrypto, no backend)
 SPEC.md                  wire format, verification algorithm, threat model, prior art
 AUDIT.md                 the adversarial review log + residual risks
+docs/standards.md        map to RFC 8693 / IETF drafts / prior art + gap-family scorecard
 PITCH.md                 60-second pitch script + recording shot list
 NEXT_STEPS.md            prioritized roadmap (start here for new work)
+.github/workflows/ci.yml CI: tests + vector-staleness + demo + JS syntax check
 ```
 
 ## Security invariants — DO NOT REGRESS
@@ -76,8 +83,9 @@ test. The suite already encodes each; run it before and after any change.
 
 ## State of play
 
-- Verified: 27 tests pass; CLI + browser demos run clean; all R1–R7 findings fixed and
-  re-probed; C1–C4 confusion attacks blocked. See `AUDIT.md`.
+- Verified: 48 tests pass (27 adversarial/regression + 6 property + 15 vector); CLI +
+  browser demos run clean; all R1–R7 findings fixed and re-probed; C1–C4 confusion
+  attacks blocked. See `AUDIT.md`.
 - Honest gaps (read `AUDIT.md` "Residual & accepted risks"): no instant global offline
   revocation; provenance honesty depends on the signer; `NonceStore` is in-memory;
   audience binding is opt-in; needs an independent professional crypto audit + a formal

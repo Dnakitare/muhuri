@@ -43,8 +43,8 @@ assert dec.authorized
 ## Run it
 
 ```bash
-pip install cryptography cbor2 pytest
-python -m pytest tests/ -q     # 18 security tests
+pip install cryptography cbor2 pytest hypothesis
+python -m pytest tests/ -q     # 48 tests: attacks + properties + cross-impl vectors
 python demo.py                 # narrated end-to-end walkthrough
 ```
 
@@ -56,18 +56,11 @@ python demo.py                 # narrated end-to-end walkthrough
 - `tests/test_muhuri.py` — each test encodes a specific attack and shows it blocked.
 - `SPEC.md` — wire format, verification algorithm, threat model, prior-art map.
 
-## Why this is the lucrative wedge
+## Status
 
-Agent identity/NHI was the largest category at RSA 2026 (41 companies), and the
-delegation-chain piece is the part everyone names as unsolved and nobody has
-shipped as a clean primitive. It is pre-standardization (active IETF draft +
-arXiv papers, March–April 2026) — the window to define the reference is open
-now. The credential format is the chokepoint the entire control plane routes
-through: brokers mint it, audit buses key on it, every resource server verifies
-it. Plays available from this core: (1) open-source reference + standards track
-to own the format, (2) the enforcement/verifier SDK and managed broker as the
-commercial layer (the Mlinzi integration), (3) a native (Rust) verifier as
-the drop-in for high-throughput gateways.
-
-Status: working reference, not yet audited. Use Ed25519/SHA-256 from a vetted
-library (this uses `cryptography`); get an independent review before production.
+Working reference implementation, not yet independently audited. The cipher
+suite is fixed (Ed25519 + SHA-256) and the crypto comes from a vetted library
+(`cryptography`). Get an independent cryptographic review and a formal model of
+the authorization properties before any production or standards-track use. See
+`AUDIT.md` for the self-review and the honest residual risks, and `docs/standards.md`
+for how Muhuri maps to the in-flight IETF drafts and prior art.

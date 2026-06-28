@@ -58,8 +58,10 @@ These are **not** solved and should be stated to any evaluator:
 
 ## What this review does NOT replace
 
-This is a developer self-audit with executable adversarial tests (27 passing,
-covering each finding). It is **not** a substitute for:
+This is a developer self-audit with executable adversarial tests (27
+adversarial/regression tests covering each finding, plus property-based and
+cross-implementation vector suites; 48 tests total). It is **not** a substitute
+for:
 
 - an independent cryptographic review of the protocol,
 - a formal model / machine-checked proof of the authorization properties, and
