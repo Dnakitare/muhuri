@@ -35,10 +35,9 @@ blocked, verification 100% offline.
 ## How it works, in code
 
 ```python
-from muhuri import KeyPair, mint, attenuate, authorize
+from muhuri import KeyPair, mint, attenuate, authorize, NonceStore
 from muhuri import caveats as cav
 from muhuri.pop import prove
-import os
 
 human, orchestrator, worker = KeyPair.generate(), KeyPair.generate(), KeyPair.generate()
 
@@ -49,11 +48,13 @@ t = mint(human, orchestrator.pub,
           cav.max_amount(1000)], ttl_seconds=300)
 t = attenuate(t, orchestrator, worker.pub, [cav.max_amount(50)])  # can only narrow
 
-# Resource server: one offline call gates the request.
-nonce = os.urandom(16)                                  # server-issued challenge
+# Resource server: one shared single-use nonce store, a fresh challenge per
+# request, and one offline call gates the request.
+store = NonceStore()
+nonce = store.issue()                                    # server-issued challenge
 req = {"op": "transfer", "resource": "/accounts/alice/checking", "args": {"amount": 40}}
 pop = prove(t, worker, req, nonce)                       # holder proves key possession
-dec = authorize(t, human.pub, req, pop, expected_nonce=nonce)
+dec = authorize(t, human.pub, req, pop, expected_nonce=nonce, nonce_store=store)
 assert dec.authorized
 ```
 
@@ -61,7 +62,7 @@ assert dec.authorized
 
 ```bash
 pip install cryptography cbor2 pytest hypothesis
-python -m pytest tests/ -q     # 48 tests: attacks + properties + cross-impl vectors
+python -m pytest tests/ -q     # 92 tests: attacks + properties + vectors + red-team regressions
 python tools/gen_vectors.py --check   # cross-implementation vectors are current
 ```
 

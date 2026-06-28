@@ -36,6 +36,30 @@ runnable code (not prose):
 | C3 | Replay a valid human approval from chain X onto chain Y (same approver, same request). | Approvals bind `muhuri_id`; a different chain has a different id, so the approval does not verify. |
 | C4 | Strip a caveat by self-delegating (A → A) and acting beyond the original limit. | Attenuation only ever *adds* caveats; the verifier ANDs all of them. There is no representable widening operation. |
 
+## Independent red-team (June 2026)
+
+A later multi-agent adversarial audit (two rounds, every finding reproduced with a
+runnable PoC and verified by an independent skeptic) found defects the self-review
+above missed, including two that contradicted claims this document had marked
+settled. All of the following are now fixed with regression tests in
+`tests/test_redteam_fixes.py`; the second round also caught a bug in the first
+round's own fix, which is why both rounds are recorded.
+
+| # | Severity | Finding | Status |
+|---|----------|---------|--------|
+| H1 | **High** | Low-order / non-canonical Ed25519 public keys were accepted (length-only validation), admitting a universal forgery (`R=identity, S=0`) with no private key. Defeated holder-of-key, link authenticity, and the approval gate. | **Fixed** — `keys.is_acceptable_key` rejects torsion points (`[8]P == identity`) and non-canonical encodings before verification; `mint`/`attenuate`/`requires_approval` reject them at construction. |
+| H2 | **High** | Replay protection (R1 approval double-spend, R2 PoP replay) was off whenever `nonce_store` was omitted, which every shipped example did. R1/R2 above were marked "Fixed" but were caller-supplied and defaulted off. | **Fixed** — `nonce_store` is now a required argument; omitting it errors, with an explicit `NO_REPLAY_PROTECTION` opt-out. README/demo updated. |
+| H3 | **High** | `NaN` defeated the `max_amount` cap (`NaN > limit` is always False under IEEE-754). | **Fixed** — non-finite values rejected; comparison written so any non-`<=` result fails closed. |
+| M1 | Medium | PoP/approval nonce was consumed *before* the signature verified, so a forged PoP citing an honest outstanding nonce could burn it (DoS). | **Fixed** — verify first, consume only on success. |
+| M2 | Medium | Malformed-but-signed caveats, non-dict request `args`, and attacker-controlled approval `exp` raised uncaught `KeyError`/`TypeError`/`OverflowError` instead of `VerifyError`, breaking the fail-closed contract. | **Fixed** — `_eval_one` validates each shape inline; `from_sealed` rejects non-map caveats; `authorize` has a fail-closed backstop. |
+| L1 | Low | Replay gate checked for a `consume` attribute, not a real `NonceStore`; `from_string` base64-decoded before the size cap (memory amplification). | **Fixed** — gate on the `NonceStore` type; cap the string length first. |
+| M3 | Medium | A malformed `pop` (non-dict, non-numeric `ts`) escaped `authorize` as a raw `AttributeError`/`TypeError` (round-3, FRESH-1). | **Fixed** — `check_pop` validates shape; `authorize` has a PoP backstop. |
+| L2 | Low | A `requires_approval` `label` was not bound into the approval signature, so one approver signature cleared every same-approver gate; the wire `v` was parsed but dropped, making the version gate dead code (round-3 FRESH-4/3). | **Fixed** — `label` is signed and matched; `Link` carries `v` and `verify_chain` enforces it. |
+
+**R1/R2 correction:** the original "Fixed" status for R1/R2 was accurate about the
+mechanism but not the default. Enforcement is caller-supplied and is now *required*
+by the API, matching how audience binding was already disclosed as opt-in.
+
 ## Residual & accepted risks (honest limits)
 
 These are **not** solved and should be stated to any evaluator:
@@ -60,7 +84,7 @@ These are **not** solved and should be stated to any evaluator:
 
 This is a developer self-audit with executable adversarial tests (27
 adversarial/regression tests covering each finding, plus property-based and
-cross-implementation vector suites; 48 tests total). It is **not** a substitute
+cross-implementation vector suites; 92 tests total). It is **not** a substitute
 for:
 
 - an independent cryptographic review of the protocol,

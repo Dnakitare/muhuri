@@ -91,8 +91,12 @@ Given the chain and one trust anchor (the root principal's public key):
    every hop**. Unknown caveat types fail closed.
 5. **Proof of possession.** The caller must present a fresh signature over
    `SHA256("muhuri/pop/v1" || muhuri_id || canonical(request) || server_nonce
-   || ts)` under `links[n].dge`, within the timestamp window, matching the
-   server-issued nonce.
+   || ts || audience)` under `links[n].dge`, within the timestamp window,
+   matching the server-issued nonce. `audience` is the resource server's
+   identifier (empty by default); when set, it binds the PoP to one server so a
+   proof minted for server A cannot be relayed to server B (R7). The `ts` and
+   `audience` are encoded as in the reference impl (`ts` big-endian 8 bytes,
+   `audience` raw bytes); the Python implementation is normative for the bytes.
 
 (a)+(b)+(c) are the three-way "matched halves" binding that defeats splicing.
 (5) converts the credential from bearer to holder-of-key.
@@ -160,9 +164,12 @@ public key; clocks are loosely synchronized (PoP skew default ±60s).
 ## Performance (pure-Python reference)
 
 - Credential size: 258 bytes/hop (linear).
-- Full per-request `authorize` on a 3-hop credential: ~1,260/sec single-thread
-  (~0.8 ms), dominated by n+1 Ed25519 verifies. A native (Rust) verifier is
-  expected ~100× faster and is the intended production target.
+- Full per-request `authorize` on a 3-hop credential: ~1,300/sec single-thread
+  (~0.76 ms) with the public-key validation cache warm, dominated by the n+1
+  Ed25519 verifies. Each *first* validation of a new key adds a pure-Python
+  low-order-point check (two ~255-bit modexps, cached thereafter per key). A
+  native (Rust) verifier is expected ~100× faster and is the intended production
+  target.
 
 ---
 

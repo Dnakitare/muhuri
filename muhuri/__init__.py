@@ -10,18 +10,18 @@ Public API:
     from muhuri.pop import prove
     from muhuri.revocation import RevocationSet
 """
-from .keys import KeyPair, verify_sig
+from .keys import KeyPair, verify_sig, is_small_order, is_acceptable_key
 from .credential import Link, Muhuri, mint, attenuate, now, MalformedCredential, MAX_DEPTH
-from .verify import authorize, verify_chain, parse, VerifyError, Decision
+from .verify import authorize, verify_chain, parse, VerifyError, Decision, NO_REPLAY_PROTECTION
 from .pop import NonceStore
 from . import caveats
 from . import pop
 from . import revocation
 
 __all__ = [
-    "KeyPair", "verify_sig", "Link", "Muhuri", "mint", "attenuate", "now",
-    "MalformedCredential", "MAX_DEPTH", "NonceStore",
+    "KeyPair", "verify_sig", "is_small_order", "is_acceptable_key", "Link", "Muhuri", "mint",
+    "attenuate", "now", "MalformedCredential", "MAX_DEPTH", "NonceStore",
     "authorize", "verify_chain", "parse", "VerifyError", "Decision",
-    "caveats", "pop", "revocation",
+    "NO_REPLAY_PROTECTION", "caveats", "pop", "revocation",
 ]
 __version__ = "0.2.0"

@@ -19,7 +19,8 @@ import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from muhuri import KeyPair, MalformedCredential, Muhuri, VerifyError, attenuate, mint, parse
+from muhuri import (KeyPair, MalformedCredential, Muhuri, NO_REPLAY_PROTECTION,
+                    VerifyError, attenuate, mint, parse)
 from muhuri import caveats as cav
 from muhuri.pop import prove
 from muhuri.verify import authorize, verify_chain
@@ -39,7 +40,8 @@ def _try_authorize(t: Muhuri, root_pub: bytes, holder: KeyPair, request: dict) -
     nonce = os.urandom(16)
     pop = prove(t, holder, request, nonce)
     try:
-        return authorize(t, root_pub, request, pop, expected_nonce=nonce).authorized
+        return authorize(t, root_pub, request, pop, expected_nonce=nonce,
+                         nonce_store=NO_REPLAY_PROTECTION).authorized
     except VerifyError:
         return False
 

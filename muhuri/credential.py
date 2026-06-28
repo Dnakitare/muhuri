@@ -32,7 +32,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from .canonical import ZERO32, cdec, cenc, h256
-from .keys import KeyPair
+from .keys import KeyPair, is_small_order
+
+
+def _check_delegate_pub(delegate_pub) -> None:
+    """[AUDIT CRYPTO-1] Refuse to delegate to a malformed or low-order key. The
+    verifier already rejects these (verify_sig), this stops an honest minter from
+    ever embedding one in the first place."""
+    if not isinstance(delegate_pub, (bytes, bytearray)) or len(delegate_pub) != 32:
+        raise ValueError("delegate public key must be 32 bytes")
+    if is_small_order(delegate_pub):
+        raise ValueError("delegate public key is a low-order point (forgeable); rejected")
 
 VERSION = 1
 DOMAIN_LINK = b"muhuri/link/v1"
@@ -66,11 +76,14 @@ class Link:
     non: bytes           # 16-byte uniqueness nonce
     meta: dict           # provenance (agent_id, model, code_digest, ...)
     sig: bytes = b""     # Ed25519 over body_bytes, by dgr
+    v: int = VERSION     # [AUDIT FRESH-3] format version, carried from the wire so
+                         # verify_chain actually enforces it (and a tampered v is
+                         # caught by the signature, since body() now reflects it)
 
     # ---- canonical body (everything that is signed) ----
     def body(self) -> dict:
         return {
-            "v": VERSION, "prev": self.prev, "dgr": self.dgr, "dge": self.dge,
+            "v": self.v, "prev": self.prev, "dgr": self.dgr, "dge": self.dge,
             "cav": self.cav, "nbf": self.nbf, "exp": self.exp,
             "non": self.non, "meta": self.meta,
         }
@@ -101,12 +114,19 @@ class Link:
                 raise MalformedCredential(f"field {k!r} must be bytes")
         if not isinstance(d["cav"], list) or not isinstance(d["meta"], dict):
             raise MalformedCredential("cav must be a list and meta a map")
-        if not isinstance(d["nbf"], int) or not isinstance(d["exp"], int):
+        # [AUDIT FAILCLOSED-1/ENCODING-2] Each caveat must be a map, validated at
+        # the wire boundary so a non-dict element cannot reach _eval_one and crash.
+        if not all(isinstance(c, dict) for c in d["cav"]):
+            raise MalformedCredential("each caveat must be a map")
+        if not isinstance(d["nbf"], int) or not isinstance(d["exp"], int) \
+                or isinstance(d["nbf"], bool) or isinstance(d["exp"], bool):
             raise MalformedCredential("nbf/exp must be integers")
+        if not isinstance(d["v"], int) or isinstance(d["v"], bool):
+            raise MalformedCredential("v must be an integer")
         return cls(
             prev=bytes(d["prev"]), dgr=bytes(d["dgr"]), dge=bytes(d["dge"]),
             cav=d["cav"], nbf=d["nbf"], exp=d["exp"], non=bytes(d["non"]),
-            meta=d["meta"], sig=bytes(d["sig"]),
+            meta=d["meta"], sig=bytes(d["sig"]), v=d["v"],
         )
 
 
@@ -161,6 +181,11 @@ class Muhuri:
     def from_string(cls, s: str) -> "Muhuri":
         if not isinstance(s, str) or not s.startswith("mhr1_"):
             raise MalformedCredential("not a muhuri string")
+        # [AUDIT FRESH-2] Bound the input by length BEFORE base64-decoding, so an
+        # oversized string is rejected without allocating its decoded buffer. A
+        # valid credential is <= MAX_BYTES, whose base64 is ~1.34x; 2x is generous.
+        if len(s) > MAX_BYTES * 2:
+            raise MalformedCredential("credential string too large")
         raw = s[len("mhr1_"):]
         raw += "=" * (-len(raw) % 4)
         try:
@@ -179,6 +204,7 @@ def mint(root: KeyPair, delegate_pub: bytes, caveats: list[dict],
          ttl_seconds: int = 300, nbf: int | None = None,
          meta: dict | None = None) -> Muhuri:
     """Root principal issues the first delegation link to an agent."""
+    _check_delegate_pub(delegate_pub)
     nbf = now() if nbf is None else nbf
     link = Link(
         prev=ZERO32, dgr=root.pub, dge=delegate_pub, cav=list(caveats),
@@ -200,6 +226,7 @@ def attenuate(tess: Muhuri, holder: KeyPair, delegate_pub: bytes,
     *added*; the verifier ANDs them with all prior caveats, so scope can only
     shrink. The validity window can only shrink (verifier intersects windows).
     """
+    _check_delegate_pub(delegate_pub)
     parent = tess.leaf
     if holder.pub != parent.dge:
         raise ValueError("holder key does not match the delegate of the parent link")

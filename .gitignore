@@ -12,3 +12,6 @@ target/
 
 # private positioning notes — never publish
 STRATEGY.md
+
+# local security audit, never publish until fixed
+SECURITY-REDTEAM-*.md

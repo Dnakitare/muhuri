@@ -160,7 +160,7 @@ def build_vectors() -> dict:
 
     # requires_approval satisfied by a fresh, bound approver signature.
     appr_req = {"op": "transfer", "resource": "/accounts/alice/checking", "args": {"amount": 500}}
-    approval = cav.make_approval(APPROVER, appr.muhuri_id(), appr_req, ttl=600)
+    approval = cav.make_approval(APPROVER, appr.muhuri_id(), appr_req, "treasurer", ttl=600)
     # Pin the approval's timestamp-derived expiry deterministically.
     approval = {
         "approver": approval["approver"], "nonce": approval["nonce"],
@@ -168,7 +168,7 @@ def build_vectors() -> dict:
     }
     # Re-sign with the deterministic exp (make_approval used wall-clock exp).
     from muhuri.caveats import _approval_msg  # internal: vectors must pin exp
-    approval["sig"] = APPROVER.sign(_approval_msg(appr.muhuri_id(), appr_req, approval["nonce"], approval["exp"]))
+    approval["sig"] = APPROVER.sign(_approval_msg(appr.muhuri_id(), appr_req, approval["nonce"], approval["exp"], "treasurer"))
     appr_record = [{"approver": approval["approver"].hex(), "nonce": approval["nonce"].hex(),
                     "exp": approval["exp"], "sig_hex": approval["sig"].hex()}]
     vectors.append(_vector(

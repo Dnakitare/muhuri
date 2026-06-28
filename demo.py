@@ -4,11 +4,10 @@ Muhuri end-to-end demo.
 Walks a payments scenario through real 2026 attack classes and shows each one
 defended. Run:  python demo.py
 """
-from muhuri import KeyPair, mint, attenuate, Muhuri, authorize, VerifyError
+from muhuri import KeyPair, mint, attenuate, Muhuri, authorize, VerifyError, NonceStore
 from muhuri import caveats as cav
 from muhuri.pop import prove
 from muhuri.revocation import RevocationSet
-import os
 
 
 def line(c="-"):
@@ -57,17 +56,27 @@ def main():
     print(f"\n  whole credential: {rep['hops']} hops, {rep['bytes']} bytes, verifiable offline")
     print(f"  wire form: {t.to_string()[:54]}…")
 
-    # ---- the resource server issues a per-request challenge ----
-    server_nonce = os.urandom(16)
+    # The resource server keeps one single-use nonce store and issues a fresh
+    # challenge per request. Passing it to authorize() turns on R1/R2 replay
+    # protection; without a store authorize() refuses to run (no silent insecure
+    # path). [AUDIT AUTHZ-1]
+    store = NonceStore()
 
     # ============================================================
     line("=")
     print("LEGITIMATE REQUEST")
     line("=")
     req = {"op": "transfer", "resource": "/accounts/alice/checking", "args": {"amount": 40}}
-    pop = prove(t, worker, req, server_nonce)
-    dec = authorize(t, trust_anchor, req, pop, expected_nonce=server_nonce)
+    nonce = store.issue()
+    pop = prove(t, worker, req, nonce)
+    dec = authorize(t, trust_anchor, req, pop, expected_nonce=nonce, nonce_store=store)
     ok(f"$40 transfer on alice's account, authorized={dec.authorized} (depth {dec.depth})")
+
+    print("  Now replay the exact same request + proof a second time:")
+    try:
+        authorize(t, trust_anchor, req, pop, expected_nonce=nonce, nonce_store=store)
+    except VerifyError as e:
+        block(f"single-use nonce already spent: {e}")
 
     # ============================================================
     line("=")
@@ -75,17 +84,19 @@ def main():
     line("=")
     print("  A poisoned instruction tells the worker to move $40 to BOB instead.")
     evil = {"op": "transfer", "resource": "/accounts/bob/wallet", "args": {"amount": 40}}
-    pop = prove(t, worker, evil, server_nonce)
+    nonce = store.issue()
+    pop = prove(t, worker, evil, nonce)
     try:
-        authorize(t, trust_anchor, evil, pop, expected_nonce=server_nonce)
+        authorize(t, trust_anchor, evil, pop, expected_nonce=nonce, nonce_store=store)
     except VerifyError as e:
         block(f"resource outside granted scope: {e}")
 
     print("  Same injection, but trying $900 (within orchestrator's $1000, over worker's $50):")
     evil2 = {"op": "transfer", "resource": "/accounts/alice/checking", "args": {"amount": 900}}
-    pop = prove(t, worker, evil2, server_nonce)
+    nonce = store.issue()
+    pop = prove(t, worker, evil2, nonce)
     try:
-        authorize(t, trust_anchor, evil2, pop, expected_nonce=server_nonce)
+        authorize(t, trust_anchor, evil2, pop, expected_nonce=nonce, nonce_store=store)
     except VerifyError as e:
         block(f"exceeds the narrowed limit: {e}")
 
@@ -97,11 +108,12 @@ def main():
     evil_root = KeyPair.generate()
     fat = mint(evil_root, orchestrator.pub, [cav.op_in("transfer"), cav.max_amount(10**6)], 300)
     spliced = Muhuri(links=[t.links[0], fat.links[0]])
+    sreq = {"op": "transfer", "resource": "/x", "args": {"amount": 500000}}
+    nonce = store.issue()
     try:
-        authorize(spliced, trust_anchor,
-                  {"op": "transfer", "resource": "/x", "args": {"amount": 500000}},
-                  prove(spliced, orchestrator, {"op": "transfer", "resource": "/x", "args": {"amount": 500000}}, server_nonce),
-                  expected_nonce=server_nonce)
+        authorize(spliced, trust_anchor, sreq,
+                  prove(spliced, orchestrator, sreq, nonce),
+                  expected_nonce=nonce, nonce_store=store)
     except VerifyError as e:
         block(f"graft fails the two-halves binding: {e}")
 
@@ -113,10 +125,11 @@ def main():
     stolen = Muhuri.from_string(t.to_string())
     thief = KeyPair.generate()
     req = {"op": "transfer", "resource": "/accounts/alice/checking", "args": {"amount": 40}}
-    forged_pop = {"ts": __import__("muhuri").now(), "server_nonce": server_nonce,
+    nonce = store.issue()
+    forged_pop = {"ts": __import__("muhuri").now(), "server_nonce": nonce,
                   "sig": thief.sign(b"x")}
     try:
-        authorize(stolen, trust_anchor, req, forged_pop, expected_nonce=server_nonce)
+        authorize(stolen, trust_anchor, req, forged_pop, expected_nonce=nonce, nonce_store=store)
     except VerifyError as e:
         block(f"no proof-of-possession of the leaf key: {e}")
 
@@ -129,13 +142,16 @@ def main():
               [cav.op_in("transfer"), cav.requires_approval(treasurer.pub, "treasury-approval")], 300)
     th = attenuate(th, orchestrator, worker.pub, [])
     big = {"op": "transfer", "resource": "/accounts/alice/x", "args": {"amount": 500}}
-    pop = prove(th, worker, big, server_nonce)
+    nonce = store.issue()
     try:
-        authorize(th, trust_anchor, big, pop, expected_nonce=server_nonce)
+        authorize(th, trust_anchor, big, prove(th, worker, big, nonce),
+                  expected_nonce=nonce, nonce_store=store)
     except VerifyError as e:
         block(f"high-value transfer without sign-off: {e}")
-    approval = cav.make_approval(treasurer, th.muhuri_id(), big)
-    dec = authorize(th, trust_anchor, big, pop, expected_nonce=server_nonce, approvals=[approval])
+    approval = cav.make_approval(treasurer, th.muhuri_id(), big, "treasury-approval")
+    nonce = store.issue()
+    dec = authorize(th, trust_anchor, big, prove(th, worker, big, nonce),
+                    expected_nonce=nonce, approvals=[approval], nonce_store=store)
     ok(f"same transfer WITH a fresh treasury signature bound to it: authorized={dec.authorized}")
 
     # ============================================================
@@ -144,9 +160,10 @@ def main():
     line("=")
     rev = RevocationSet([t.links[1].link_id()])
     req = {"op": "read", "resource": "/accounts/alice/x", "args": {}}
-    pop = prove(t, worker, req, server_nonce)
+    nonce = store.issue()
+    pop = prove(t, worker, req, nonce)
     try:
-        authorize(t, trust_anchor, req, pop, expected_nonce=server_nonce, revoker=rev)
+        authorize(t, trust_anchor, req, pop, expected_nonce=nonce, nonce_store=store, revoker=rev)
     except VerifyError as e:
         block(f"worker's branch revoked: {e}")
 

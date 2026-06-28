@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from muhuri import VerifyError, parse
+from muhuri import NO_REPLAY_PROTECTION, VerifyError, parse
 from muhuri.verify import authorize
 
 VECTORS_PATH = Path(__file__).parent / "vectors.json"
@@ -53,6 +53,7 @@ def _call(v: dict):
         approvals=_approvals_from(v),
         at=v["at"],
         audience=bytes.fromhex(v["audience_hex"]),
+        nonce_store=NO_REPLAY_PROTECTION,
     )
 
 

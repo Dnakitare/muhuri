@@ -34,12 +34,28 @@ from .canonical import ZERO32
 from .caveats import CaveatError, evaluate
 from .credential import MAX_DEPTH, VERSION, MalformedCredential, Muhuri, now
 from .keys import verify_sig
-from .pop import check_pop
+from .pop import check_pop, NonceStore
 from .revocation import AllowAll, Revoker
 
 
 class VerifyError(Exception):
     pass
+
+
+class _NoReplayProtection:
+    """Sentinel for the explicit, greppable opt-out from single-use replay
+    protection. See NO_REPLAY_PROTECTION."""
+    __slots__ = ()
+
+    def __repr__(self):
+        return "NO_REPLAY_PROTECTION"
+
+
+# [AUDIT AUTHZ-1] `authorize` requires a nonce_store so replay protection (R1
+# approval double-spend, R2 PoP replay) cannot be silently disabled by omission.
+# A caller with no shared store (e.g. a context that handles replay elsewhere)
+# must opt out on purpose by passing this sentinel.
+NO_REPLAY_PROTECTION = _NoReplayProtection()
 
 
 @dataclass
@@ -118,34 +134,69 @@ def authorize(tess: Muhuri, trusted_roots, request: dict, pop: dict,
               expected_nonce: bytes, approvals: list[dict] | None = None,
               revoker: Revoker | None = None, at: int | None = None,
               max_skew: int = 60, max_depth: int = MAX_DEPTH,
-              nonce_store=None, audience: bytes = b"") -> Decision:
-    """Full per-request gate. Returns an authorized Decision or raises VerifyError."""
+              *, nonce_store, audience: bytes = b"") -> Decision:
+    """Full per-request gate. Returns an authorized Decision or raises VerifyError.
+
+    `nonce_store` is required [AUDIT AUTHZ-1]: pass a single-use NonceStore shared
+    across requests to enforce R1/R2 replay protection, or NO_REPLAY_PROTECTION to
+    opt out on purpose. Omitting it is an error rather than a silent insecure path.
+
+    Fail-closed contract: all UNTRUSTED, per-request inputs (the credential bytes,
+    `request`, `pop`, `approvals`) fail closed as VerifyError on any malformation.
+    Verifier CONFIGURATION (`trusted_roots`, `at`, `max_depth`, `revoker`,
+    `audience`) is the integrator's own input; misconfiguring it surfaces as an
+    ordinary exception (a loud programming error), not VerifyError. [AUDIT FAILCLOSED-CONFIG]
+    """
     at = now() if at is None else at
+
+    # [AUDIT AUTHZ-1, REPLAY-3] Resolve the replay-protection contract before any
+    # work. Gate on the real NonceStore type (or a subclass), not a bare consume()
+    # attribute, so a no-op object cannot silently disable single-use protection.
+    if nonce_store is NO_REPLAY_PROTECTION:
+        store = None
+    elif isinstance(nonce_store, NonceStore):
+        store = nonce_store
+    else:
+        raise VerifyError(
+            "authorize requires a NonceStore (or subclass) for single-use replay "
+            "protection (R1 approval double-spend, R2 PoP replay). Pass one shared "
+            "across requests, or NO_REPLAY_PROTECTION to opt out explicitly.")
+
     dec = verify_chain(tess, trusted_roots, at=at, revoker=revoker, max_depth=max_depth)
 
-    # [R2] single-use PoP nonce
-    if nonce_store is not None and not nonce_store.consume("pop", expected_nonce):
-        raise VerifyError("PoP nonce already used (replay)")
-
-    # holder must control the leaf key, for THIS request, THIS server, freshly
+    # Holder must control the leaf key, for THIS request, THIS server, freshly.
+    # [REPLAY-2] Verify the proof BEFORE consuming the nonce, so a forged PoP that
+    # cites an honest outstanding nonce cannot burn it (denial of service).
     try:
         check_pop(tess, request, pop, expected_nonce, max_skew=max_skew, at=at, audience=audience)
     except ValueError as e:
         raise VerifyError(f"proof-of-possession failed: {e}")
+    except Exception as e:  # [FRESH-1] backstop: a malformed pop fails closed too
+        raise VerifyError(f"proof-of-possession failed (malformed pop): {e!r}")
+    # [R2] single-use PoP nonce, consumed only after the proof verified.
+    if store is not None and not store.consume("pop", expected_nonce):
+        raise VerifyError("PoP nonce already used (replay)")
 
-    # [R1] single-use approval nonces
-    if nonce_store is not None:
-        for a in (approvals or []):
-            n = a.get("nonce")
-            if not isinstance(n, (bytes, bytearray)) or not nonce_store.consume("approval", bytes(n)):
-                raise VerifyError("approval nonce already used or missing (replay)")
-
-    # the concrete action must satisfy every caveat across every hop
+    # The concrete action must satisfy every caveat across every hop.
+    # [FAILCLOSED-1/2/3] Attacker-influenced caveat/approval/request content must
+    # fail closed as VerifyError, never escape as a raw KeyError/OverflowError/etc.
     try:
-        evaluate(dec.effective_caveats, request, dec.muhuri_id, approvals, at=at)
+        used_approval_nonces = evaluate(dec.effective_caveats, request, dec.muhuri_id, approvals, at=at)
     except CaveatError as e:
         raise VerifyError(f"scope check failed: {e}")
+    except Exception as e:  # backstop; _eval_one also guards each shape inline
+        raise VerifyError(f"scope check failed (malformed caveat/approval/request): {e!r}")
 
+    # [R1][REPLAY-2][FRESH-B] Consume only the approval nonces that actually
+    # satisfied a caveat (verified and label-bound), after evaluate() validated
+    # them, so an unmatched or unverified approval in the list can't burn a nonce.
+    # [AUDIT APPROVAL-1] Consume each DISTINCT nonce once: two identical gates
+    # (g AND g == g) share one approval, so dedup before consuming or the second
+    # consume would wrongly reject a legitimate request.
+    if store is not None:
+        for n in dict.fromkeys(used_approval_nonces):
+            if not store.consume("approval", bytes(n)):
+                raise VerifyError("approval nonce already used (replay)")
     dec.authorized = True
     return dec
 

@@ -11,10 +11,20 @@ import os
 
 import pytest
 
-from muhuri import KeyPair, mint, attenuate, Muhuri, authorize, verify_chain, VerifyError
+from muhuri import (KeyPair, mint, attenuate, Muhuri, authorize as _real_authorize,
+                    verify_chain, VerifyError, NO_REPLAY_PROTECTION)
 from muhuri import caveats as cav
 from muhuri.pop import prove
 from muhuri.revocation import RevocationSet
+
+
+def authorize(*args, **kwargs):
+    """Test shim: `authorize` now requires a nonce_store [AUDIT AUTHZ-1]. Tests
+    that are not specifically about replay opt out of the single-use store
+    explicitly (passing a real store still works via setdefault). Replay tests and
+    the AUTHZ-1 regression call the real authorize directly."""
+    kwargs.setdefault("nonce_store", NO_REPLAY_PROTECTION)
+    return _real_authorize(*args, **kwargs)
 
 
 # ---- fixtures: principals and agents -------------------------------------
@@ -240,7 +250,7 @@ def test_requires_approval_enforced_for_high_value():
         authorize(t, root.pub, req, pop, expected_nonce=nonce)
 
     # With a fresh approval bound to THIS request: allowed.
-    approval = cav.make_approval(human, t.muhuri_id(), req)
+    approval = cav.make_approval(human, t.muhuri_id(), req, "treasury-approval")
     dec = authorize(t, root.pub, req, pop, expected_nonce=nonce, approvals=[approval])
     assert dec.authorized
 
@@ -309,7 +319,7 @@ def test_R1_approval_single_use_with_store():
                            cav.requires_approval(human.pub, "treasury")], 300)
     t = attenuate(t, A, B.pub, [])
     req = {"op": "transfer", "resource": "/x", "args": {"amount": 500}}
-    approval = cav.make_approval(human, t.muhuri_id(), req)
+    approval = cav.make_approval(human, t.muhuri_id(), req, "treasury")
 
     n1 = store.issue()
     dec = authorize(t, root.pub, req, prove(t, B, req, n1), expected_nonce=n1,
@@ -329,7 +339,7 @@ def test_R1_approval_expires():
                            cav.requires_approval(human.pub, "treasury")], 600)
     t = attenuate(t, A, B.pub, [])
     req = {"op": "transfer", "resource": "/x", "args": {"amount": 500}}
-    approval = cav.make_approval(human, t.muhuri_id(), req, ttl=120)
+    approval = cav.make_approval(human, t.muhuri_id(), req, "treasury", ttl=120)
     # 200s later the approval has expired even though the credential is valid.
     future = approval["exp"] + 80
     with pytest.raises(VerifyError, match="unexpired"):

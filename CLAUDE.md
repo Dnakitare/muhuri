@@ -19,7 +19,7 @@ Current version: `0.2.0`. Reference impl language: Python 3.11+. Demo: vanilla J
 ```bash
 # from repo root
 pip install -e ".[test]" --break-system-packages   # install package + test deps
-python -m pytest tests/ -q                  # run the suite (expect 48 passing)
+python -m pytest tests/ -q                  # run the suite (expect 92 passing)
 python tools/gen_vectors.py --check         # cross-impl vectors are not stale
 python demo.py                              # CLI narrative demo (all attacks blocked)
 # open muhuri-demo.html in a browser for the interactive demo
@@ -83,7 +83,7 @@ test. The suite already encodes each; run it before and after any change.
 
 ## State of play
 
-- Verified: 48 tests pass (27 adversarial/regression + 6 property + 15 vector); CLI +
+- Verified: 92 tests pass (27 adversarial + 6 property + 15 vector + 44 red-team regression); CLI +
   browser demos run clean; all R1–R7 findings fixed and re-probed; C1–C4 confusion
   attacks blocked. See `AUDIT.md`.
 - Honest gaps (read `AUDIT.md` "Residual & accepted risks"): no instant global offline
