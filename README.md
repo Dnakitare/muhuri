@@ -8,6 +8,8 @@ authorized whom to do exactly what*.
 
 ## See it run
 
+![Muhuri live demo: a $40 transfer is authorized, a prompt-injected transfer to Bob is blocked as out of scope, and a forged $1,000,000 spliced permission is rejected, all verified offline in the browser](docs/muhuri-demo.gif)
+
 Open [`muhuri-demo.html`](muhuri-demo.html) in a browser. It signs real Ed25519
 credentials live, with no backend.
 
