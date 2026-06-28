@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muhuri — the live authorization gate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --base:#EAEDF1; --surface:#FFFFFF; --ink:#1B1F27; --ink-soft:#5A626E;
+    --brass:#A6772E; --brass-lt:#C79A4B; --brass-wash:#F3ECDD;
+    --allow:#1F7A4D; --allow-wash:#E7F2EC;
+    --block:#B23A2E; --block-wash:#F7E9E6;
+    --line:#D3D9E0; --line-soft:#E4E8EC;
+    --shadow:0 1px 2px rgba(27,31,39,.05), 0 8px 28px rgba(27,31,39,.07);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--base); color:var(--ink);
+    font-family:Inter,system-ui,sans-serif; line-height:1.5;
+    background-image:radial-gradient(circle at 18% -10%, #fff 0, rgba(255,255,255,0) 38%);
+  }
+  .wrap{max-width:1060px; margin:0 auto; padding:28px 20px 64px}
+  .eyebrow{font-family:"JetBrains Mono",monospace; font-size:12px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--brass); display:flex; gap:10px; align-items:center}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--brass);
+    box-shadow:0 0 0 4px var(--brass-wash)}
+  h1{font-family:Sora,sans-serif; font-weight:700; letter-spacing:-.02em;
+    font-size:clamp(28px,4.8vw,46px); line-height:1.05; margin:.5em 0 .35em; max-width:16ch}
+  .lede{font-size:clamp(15px,2.2vw,18px); color:var(--ink-soft); max-width:62ch; margin:0}
+  .lede b{color:var(--ink); font-weight:600}
+
+  /* chain */
+  .chain-card{background:var(--surface); border:1px solid var(--line); border-radius:18px;
+    box-shadow:var(--shadow); padding:22px 20px 18px; margin:26px 0 22px}
+  .chain-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    margin-bottom:18px; flex-wrap:wrap}
+  .chain-head h2{font-family:Sora,sans-serif; font-weight:600; font-size:16px; margin:0;
+    letter-spacing:-.01em}
+  .chain-head .meta{font-family:"JetBrains Mono",monospace; font-size:11.5px; color:var(--ink-soft)}
+  .chain{display:flex; align-items:stretch; gap:0; overflow-x:auto; padding-bottom:6px}
+  .node{flex:0 0 auto; min-width:128px; text-align:center; display:flex; flex-direction:column;
+    align-items:center; gap:9px; padding:2px 4px}
+  .seal{width:60px;height:60px;border-radius:50%; display:grid;place-items:center;
+    border:2px solid var(--brass); color:var(--brass); background:
+    radial-gradient(circle at 32% 28%, #fff, var(--brass-wash));
+    font-family:Sora,sans-serif; font-weight:700; font-size:19px; transition:.4s}
+  .node.bank .seal{border-color:var(--ink); color:var(--ink);
+    background:radial-gradient(circle at 32% 28%, #fff, #eceef1)}
+  .node .role{font-family:"JetBrains Mono",monospace; font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-soft)}
+  .node .who{font-size:13px; font-weight:600; margin-top:-4px}
+  /* muhuri connector: two halves that mate */
+  .link{flex:1 1 auto; min-width:96px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:8px; padding-top:18px}
+  .tess{display:flex; align-items:center; height:18px}
+  .half{height:14px; width:26px; background:var(--brass-lt); position:relative}
+  .half.l{border-radius:7px 0 0 7px;
+    clip-path:polygon(0 0,72% 0,100% 50%,72% 100%,0 100%)}
+  .half.r{border-radius:0 7px 7px 0; margin-left:-7px;
+    clip-path:polygon(28% 0,100% 0,100% 100%,28% 100%,0 50%)}
+  .link.broken .half{background:var(--block)}
+  .link.broken .half.l{transform:translateX(-5px) rotate(-7deg)}
+  .link.broken .half.r{transform:translateX(7px) rotate(7deg); margin-left:2px}
+  .scope{font-family:"JetBrains Mono",monospace; font-size:10.5px; color:var(--ink-soft);
+    text-align:center; max-width:130px; line-height:1.35}
+  .scope b{color:var(--brass); font-weight:500}
+
+  /* console + verdict */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:18px;
+    box-shadow:var(--shadow); padding:20px}
+  .panel h3{font-family:Sora,sans-serif; font-weight:600; font-size:14px; margin:0 0 4px;
+    letter-spacing:-.01em}
+  .panel .hint{font-size:12.5px; color:var(--ink-soft); margin:0 0 14px}
+  .presets{display:flex; flex-direction:column; gap:8px; margin-bottom:18px}
+  .preset{display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    border:1px solid var(--line); background:#fff; border-radius:11px; padding:10px 12px;
+    cursor:pointer; font:inherit; font-size:13.5px; color:var(--ink); transition:.15s}
+  .preset:hover{border-color:var(--brass); background:var(--brass-wash)}
+  .preset .tag{font-family:"JetBrains Mono",monospace; font-size:10px; letter-spacing:.06em;
+    text-transform:uppercase; padding:3px 7px; border-radius:6px; flex:0 0 auto}
+  .preset.attack .tag{background:var(--block-wash); color:var(--block)}
+  .preset.legit .tag{background:var(--allow-wash); color:var(--allow)}
+  .preset .lbl{flex:1}
+  .manual{border-top:1px dashed var(--line); padding-top:14px}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin:9px 0}
+  .row label{font-size:12.5px; color:var(--ink-soft); font-weight:500}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{border:0; background:#fff; font:inherit; font-size:12.5px; padding:6px 12px;
+    cursor:pointer; color:var(--ink-soft)}
+  .seg button[aria-pressed="true"]{background:var(--ink); color:#fff}
+  input[type=range]{width:148px; accent-color:var(--brass)}
+  .amt{font-family:"JetBrains Mono",monospace; font-weight:500; font-size:13px; min-width:62px;
+    text-align:right}
+  .send{margin-top:16px; width:100%; border:0; border-radius:11px; cursor:pointer;
+    background:var(--ink); color:#fff; font-family:Sora,sans-serif; font-weight:600;
+    font-size:14px; padding:13px; transition:.15s; letter-spacing:.01em}
+  .send:hover{background:#000}
+  .send:disabled{opacity:.5; cursor:wait}
+
+  /* verdict */
+  .verdict{display:flex; flex-direction:column; min-height:260px}
+  .vbody{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; gap:12px; padding:8px}
+  .stamp{width:104px;height:104px;border-radius:50%; display:grid; place-items:center;
+    font-family:Sora,sans-serif; font-weight:700; font-size:13px; letter-spacing:.05em;
+    text-transform:uppercase; border:3px solid; position:relative; transition:.45s;
+    transform:scale(.9)}
+  .stamp.idle{border-color:var(--line); color:var(--ink-soft); background:#fafbfc}
+  .stamp.allow{border-color:var(--allow); color:var(--allow); background:var(--allow-wash)}
+  .stamp.block{border-color:var(--block); color:var(--block); background:var(--block-wash)}
+  .stamp.pop{animation:press .45s cubic-bezier(.2,.8,.2,1)}
+  @keyframes press{0%{transform:scale(1.25); opacity:.2}60%{transform:scale(.92)}100%{transform:scale(1)}}
+  .vreason{font-size:15px; font-weight:600; max-width:34ch}
+  .vsub{font-size:12.5px; color:var(--ink-soft); max-width:40ch; margin-top:-6px}
+  .checks{border-top:1px solid var(--line-soft); padding-top:12px; margin-top:4px}
+  .check{display:flex; gap:9px; align-items:flex-start; font-size:12.5px; padding:3px 0;
+    font-family:"JetBrains Mono",monospace}
+  .check .ic{flex:0 0 auto; width:15px;height:15px;border-radius:50%; margin-top:1px;
+    display:grid;place-items:center; font-size:10px; color:#fff; font-family:Inter}
+  .check.ok .ic{background:var(--allow)} .check.no .ic{background:var(--block)}
+  .check.skip .ic{background:var(--line); color:var(--ink-soft)}
+  .check .ct{color:var(--ink-soft)} .check.no .ct{color:var(--ink)}
+
+  /* tech drawer */
+  .drawer{margin-top:18px; background:var(--surface); border:1px solid var(--line);
+    border-radius:18px; box-shadow:var(--shadow); overflow:hidden}
+  .drawer summary{cursor:pointer; list-style:none; padding:16px 20px; display:flex;
+    align-items:center; justify-content:space-between; gap:10px; font-family:Sora,sans-serif;
+    font-weight:600; font-size:14px}
+  .drawer summary::-webkit-details-marker{display:none}
+  .drawer summary .chev{transition:.2s; color:var(--brass)}
+  .drawer[open] summary .chev{transform:rotate(90deg)}
+  .drawer .dbody{padding:0 20px 20px; border-top:1px solid var(--line-soft)}
+  .tech-note{font-size:12.5px; color:var(--ink-soft); margin:14px 0}
+  .kv{font-family:"JetBrains Mono",monospace; font-size:11.5px; background:#fafbfc;
+    border:1px solid var(--line-soft); border-radius:10px; padding:12px; overflow-x:auto;
+    white-space:pre; color:#333; line-height:1.7}
+  .kv .k{color:var(--brass)}
+  .tamper{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px;
+    background:var(--block-wash); border:1px solid #eccfca; border-radius:11px; padding:12px 14px}
+  .tamper .t-lbl{font-size:12.5px; color:var(--ink)}
+  .tamper button{border:1px solid var(--block); color:var(--block); background:#fff;
+    border-radius:8px; padding:6px 12px; font:inherit; font-size:12.5px; cursor:pointer}
+  .tamper button:hover{background:var(--block); color:#fff}
+
+  footer{margin-top:34px; text-align:center; color:var(--ink-soft); font-size:13px}
+  footer .big{font-family:Sora,sans-serif; font-weight:600; font-size:16px; color:var(--ink);
+    max-width:40ch; margin:0 auto 8px}
+  .badge{display:inline-flex; gap:7px; align-items:center; font-family:"JetBrains Mono",monospace;
+    font-size:11px; color:var(--brass); border:1px solid var(--line); border-radius:20px;
+    padding:5px 12px; margin-top:6px}
+  .algo{font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--ink-soft)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow"><span class="dot"></span> Muhuri · live authorization gate</div>
+  <h1>Watch an AI agent get stopped from stealing money.</h1>
+  <p class="lede">An assistant is allowed to move <b>up to $50</b> from Alice's account — and nothing more.
+  Every request below is checked by real cryptography running <b>in your browser</b>.
+  Try to break it. You can't.</p>
+
+  <!-- THE CHAIN -->
+  <div class="chain-card">
+    <div class="chain-head">
+      <h2>The permission, passed down the chain</h2>
+      <span class="meta" id="credMeta">building credential…</span>
+    </div>
+    <div class="chain" id="chain">
+      <div class="node"><div class="seal">A</div><div class="role">Principal</div><div class="who">Alice (human)</div></div>
+      <div class="link" data-link="0"><div class="tess"><span class="half l"></span><span class="half r"></span></div>
+        <div class="scope">transfer · read<br>on <b>/alice/</b> · ≤ <b>$1000</b></div></div>
+      <div class="node"><div class="seal">O</div><div class="role">Agent</div><div class="who">Orchestrator</div></div>
+      <div class="link" data-link="1"><div class="tess"><span class="half l"></span><span class="half r"></span></div>
+        <div class="scope">narrowed to<br>≤ <b>$50</b></div></div>
+      <div class="node"><div class="seal">W</div><div class="role">Agent</div><div class="who">Worker</div></div>
+      <div class="link" data-link="gate"><div class="tess"><span class="half l"></span><span class="half r"></span></div>
+        <div class="scope">proof of key<br>+ scope check</div></div>
+      <div class="node bank"><div class="seal">$</div><div class="role">Resource</div><div class="who">Bank API</div></div>
+    </div>
+  </div>
+
+  <!-- CONSOLE + VERDICT -->
+  <div class="grid">
+    <div class="panel">
+      <h3>Act as the worker agent</h3>
+      <p class="hint">Pick a known attack, or compose your own request and send it to the gate.</p>
+      <div class="presets" id="presets">
+        <button class="preset legit" data-s="legit"><span class="tag">legit</span><span class="lbl">Move $40 from Alice's account</span></button>
+        <button class="preset attack" data-s="bob"><span class="tag">attack</span><span class="lbl">Prompt injection: send Alice's money to Bob</span></button>
+        <button class="preset attack" data-s="over"><span class="tag">attack</span><span class="lbl">Move $900 (over the $50 limit)</span></button>
+        <button class="preset attack" data-s="splice"><span class="tag">attack</span><span class="lbl">Splice in a forged $1,000,000 permission</span></button>
+        <button class="preset attack" data-s="stolen"><span class="tag">attack</span><span class="lbl">Replay a stolen copy of the credential</span></button>
+      </div>
+      <div class="manual">
+        <div class="row"><label>Operation</label>
+          <span class="seg" id="opSeg"><button data-op="transfer" aria-pressed="true">transfer</button><button data-op="read" aria-pressed="false">read</button></span></div>
+        <div class="row"><label>Account</label>
+          <span class="seg" id="acctSeg"><button data-acct="alice" aria-pressed="true">Alice's</button><button data-acct="bob" aria-pressed="false">Bob's</button></span></div>
+        <div class="row"><label>Amount</label>
+          <span style="display:flex;align-items:center;gap:10px"><input type="range" id="amt" min="0" max="2000" step="10" value="40"><span class="amt" id="amtVal">$40</span></span></div>
+        <button class="send" id="send">Send to the gate</button>
+      </div>
+    </div>
+
+    <div class="panel verdict">
+      <h3>The gate's decision</h3>
+      <p class="hint">Decided locally, offline, in under a millisecond.</p>
+      <div class="vbody">
+        <div class="stamp idle" id="stamp">ready</div>
+        <div class="vreason" id="vreason">Send a request to see what happens.</div>
+        <div class="vsub" id="vsub"></div>
+      </div>
+      <div class="checks" id="checks" hidden></div>
+    </div>
+  </div>
+
+  <!-- TECH DRAWER -->
+  <details class="drawer" id="drawer">
+    <summary>Show the cryptography <span class="chev">▸</span></summary>
+    <div class="dbody">
+      <p class="tech-note">No mock-ups. The chain below was generated in your browser with real
+      <span id="algoName">Ed25519</span> keypairs. Each link is signed by the party that grants it; the
+      gate re-verifies every signature on every request. Edit the credential and the math notices.</p>
+      <div class="kv" id="techDump">loading…</div>
+      <div class="tamper">
+        <span class="t-lbl"><b>Tamper test:</b> rewrite the worker's $50 cap to $9,999 in the signed credential, then send a $900 transfer.</span>
+        <button id="tamperBtn">Tamper &amp; re-test</button>
+        <button id="restoreBtn" style="border-color:var(--ink);color:var(--ink)">Restore</button>
+      </div>
+    </div>
+  </details>
+
+  <footer>
+    <p class="big">Every action an AI agent takes is tied — by unbreakable math — back to a real person's permission.</p>
+    <span class="badge">● offline · tamper-evident · ~250 bytes per hop</span>
+    <div class="algo" id="algoFoot"></div>
+  </footer>
+</div>
+
+<script>
+/* ---------- tiny crypto + canonical encoding (real, in-browser) ---------- */
+const enc = new TextEncoder();
+let ALGO = "Ed25519";
+const signParams = () => ALGO === "Ed25519" ? {name:"Ed25519"} : {name:"ECDSA", hash:{name:"SHA-256"}};
+const genParams  = () => ALGO === "Ed25519" ? {name:"Ed25519"} : {name:"ECDSA", namedCurve:"P-256"};
+
+const toHex = b => [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+function stable(o){ // deterministic JSON
+  if(Array.isArray(o)) return "["+o.map(stable).join(",")+"]";
+  if(o && typeof o==="object") return "{"+Object.keys(o).sort().map(k=>JSON.stringify(k)+":"+stable(o[k])).join(",")+"}";
+  return JSON.stringify(o);
+}
+async function sha(str){ return new Uint8Array(await crypto.subtle.digest("SHA-256", typeof str==="string"?enc.encode(str):str)); }
+const pubReg = new Map();   // pubHex -> {publicKey, privateKey}
+const pubImp = new Map();   // pubHex -> CryptoKey (verify)
+
+async function genKey(){
+  const kp = await crypto.subtle.generateKey(genParams(), true, ["sign","verify"]);
+  const raw = toHex(await crypto.subtle.exportKey("raw", kp.publicKey));
+  pubReg.set(raw, kp); pubImp.set(raw, kp.publicKey);
+  return raw;
+}
+async function importPub(hex){
+  if(pubImp.has(hex)) return pubImp.get(hex);
+  const raw = Uint8Array.from(hex.match(/../g).map(h=>parseInt(h,16)));
+  const k = await crypto.subtle.importKey("raw", raw, genParams(), true, ["verify"]);
+  pubImp.set(hex,k); return k;
+}
+async function signWith(pubHex, msg){
+  const kp = pubReg.get(pubHex);
+  return toHex(await crypto.subtle.sign(signParams(), kp.privateKey, msg));
+}
+async function verifyWith(pubHex, sigHex, msg){
+  try{
+    const k = await importPub(pubHex);
+    const sig = Uint8Array.from(sigHex.match(/../g).map(h=>parseInt(h,16)));
+    return await crypto.subtle.verify(signParams(), k, sig, msg);
+  }catch(e){ return false; }
+}
+
+/* ---------- the Muhuri model ---------- */
+const D_SIG="muhuri/sig/v1", D_LINK="muhuri/link/v1", D_CRED="muhuri/cred/v1", D_POP="muhuri/pop/v1";
+const ZERO = "00".repeat(32);
+const nowS = () => Math.floor(Date.now()/1000);
+
+function body(L){ return {v:1, prev:L.prev, dgr:L.dgr, dge:L.dge, cav:L.cav, nbf:L.nbf, exp:L.exp, non:L.non}; }
+async function signMsg(L){ return await sha(D_SIG + stable(body(L))); }
+async function linkId(L){ return toHex(await sha(D_LINK + stable(body(L)) + L.sig)); }
+async function credId(links){ let s=D_CRED; for(const L of links) s+=await linkId(L); return toHex(await sha(s)); }
+
+async function mint(rootHex, delegateHex, cav, ttl){
+  const nbf=nowS(), L={prev:ZERO, dgr:rootHex, dge:delegateHex, cav, nbf, exp:nbf+ttl, non:toHex(crypto.getRandomValues(new Uint8Array(8)))};
+  L.sig = await signWith(rootHex, await signMsg(L));
+  return [L];
+}
+async function attenuate(chain, holderHex, delegateHex, addCav){
+  const p=chain[chain.length-1], nbf=Math.max(nowS(),p.nbf);
+  const L={prev:await linkId(p), dgr:holderHex, dge:delegateHex, cav:addCav, nbf, exp:p.exp, non:toHex(crypto.getRandomValues(new Uint8Array(8)))};
+  L.sig = await signWith(holderHex, await signMsg(L));
+  return chain.concat([L]);
+}
+
+/* ---------- offline verification (returns a plain-English trace) ---------- */
+async function authorize(chain, trustedRoot, request, pop){
+  const checks=[]; const add=(s,t)=>checks.push({s,t});
+  // 1 root anchor
+  if(chain[0].dgr!==trustedRoot){ add("no","Chain is not signed by Alice — unknown root key"); return verdict(false,"Unknown issuer","The credential isn't rooted in Alice's key.",checks);}
+  add("ok","Rooted in Alice's key");
+  // 2 walk links: splice bindings + signatures
+  let effCav=[], effExp=1e15;
+  for(let i=0;i<chain.length;i++){
+    const L=chain[i];
+    if(i>0){
+      const par=chain[i-1];
+      if(L.prev !== await linkId(par)){ markBroken(i); add("no","Link "+i+": the two halves of the seal don't match (spliced)"); return verdict(false,"Forged delegation chain","A permission link was grafted in from somewhere else.",checks);}
+      if(L.dgr !== par.dge){ markBroken(i); add("no","Link "+i+": delegator isn't who the parent handed to (spliced)"); return verdict(false,"Forged delegation chain","A permission link was grafted in from somewhere else.",checks);}
+    }
+    if(!await verifyWith(L.dgr, L.sig, await signMsg(L))){ markBroken(i); add("no","Link "+i+": signature invalid — credential was altered"); return verdict(false,"Tampered credential","A signature didn't match. The bytes were changed.",checks);}
+    effCav=effCav.concat(L.cav); effExp=Math.min(effExp,L.exp);
+  }
+  add("ok","Every link signed and bound to the one before");
+  if(nowS()>effExp){ add("no","Credential expired"); return verdict(false,"Expired","This credential is past its short lifetime.",checks);}
+  // 3 proof of possession
+  const popMsg = await sha(D_POP + await credId(chain) + stable(request) + pop.nonce);
+  if(!await verifyWith(chain[chain.length-1].dge, pop.sig, popMsg)){
+    add("no","No proof the sender holds the worker's private key"); 
+    return verdict(false,"Stolen credential is useless","Whoever sent this doesn't hold the key it was issued to.",checks);
+  }
+  add("ok","Sender proved possession of the worker's key");
+  // 4 scope (conjunction of all caveats)
+  for(const c of effCav){
+    if(c.t==="op_in" && !c.ops.includes(request.op)){ add("no","Operation “"+request.op+"” is outside the granted scope"); return verdict(false,"Outside granted scope","The credential never allowed this operation.",checks);}
+    if(c.t==="resource_prefix" && !request.resource.startsWith(c.prefix)){ add("no","Resource “"+request.resource+"” is outside “"+c.prefix+"”"); return verdict(false,"Outside granted scope","This credential is only valid on Alice's own accounts.",checks);}
+    if(c.t==="max_amount"){ const v=request.args.amount; if(v==null){ add("no","Amount required but missing"); return verdict(false,"Outside granted scope","",checks);} if(v>c.limit){ add("no","$"+v+" exceeds the $"+c.limit+" limit"); return verdict(false,"Over the limit","The amount is larger than what was delegated.",checks);} }
+  }
+  add("ok","Action is within scope (the AND of every hop)");
+  return verdict(true,"Authorized","Tied back to Alice's permission, cryptographically.",checks);
+}
+function verdict(ok,reason,sub,checks){ return {ok,reason,sub,checks}; }
+
+/* ---------- wiring ---------- */
+let ROOT, ORCH, WORKER, EVIL, ATTACKER, CHAIN, TAMPERED=false;
+const $=s=>document.querySelector(s);
+
+async function boot(){
+  // pick an algorithm the browser actually supports (story is identical)
+  try{ await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"]); ALGO="Ed25519"; }
+  catch(e){ ALGO="ECDSA"; }
+  $("#algoName").textContent = ALGO==="Ed25519"?"Ed25519":"ECDSA P-256";
+  $("#algoFoot").textContent = "signature scheme in use: "+(ALGO==="Ed25519"?"Ed25519":"ECDSA P-256 (browser fallback)");
+
+  ROOT=await genKey(); ORCH=await genKey(); WORKER=await genKey(); EVIL=await genKey(); ATTACKER=await genKey();
+  await rebuild();
+  $("#credMeta").textContent = "2 hops · "+(stable(CHAIN).length)+" chars on the wire · verifiable offline";
+  await dump();
+}
+async function rebuild(){
+  const base = await mint(ROOT, ORCH, [{t:"op_in",ops:["read","transfer"]},{t:"resource_prefix",prefix:"/accounts/alice/"},{t:"max_amount",limit:1000}], 300);
+  CHAIN = await attenuate(base, ORCH, WORKER, [{t:"max_amount",limit: TAMPERED?9999:50}]);
+}
+function clearBroken(){ document.querySelectorAll(".link.broken").forEach(e=>e.classList.remove("broken")); }
+function markBroken(i){ const el=document.querySelector('.link[data-link="'+(i-1)+'"]'); if(el) el.classList.add("broken"); }
+
+async function popFor(chain, signerHex, request){
+  const nonce = toHex(crypto.getRandomValues(new Uint8Array(16)));
+  const msg = await sha(D_POP + await credId(chain) + stable(request) + nonce);
+  const sig = await signWith(signerHex, msg);
+  return {nonce, sig};
+}
+
+async function runScenario(s){
+  clearBroken();
+  let chain=CHAIN, request, popSigner=WORKER, trusted=ROOT;
+  if(s==="legit")  request={op:"transfer",resource:"/accounts/alice/checking",args:{amount:40}};
+  if(s==="bob")    request={op:"transfer",resource:"/accounts/bob/wallet",args:{amount:40}};
+  if(s==="over")   request={op:"transfer",resource:"/accounts/alice/checking",args:{amount:900}};
+  if(s==="stolen"){request={op:"transfer",resource:"/accounts/alice/checking",args:{amount:40}}; popSigner=ATTACKER;}
+  if(s==="splice"){
+    // attacker forges a fat link signed by a DIFFERENT root and grafts it on
+    const evilLink = (await mint(EVIL, WORKER, [{t:"op_in",ops:["transfer"]},{t:"max_amount",limit:1000000}], 300))[0];
+    evilLink.dgr = EVIL; // signed by evil root, not by the orchestrator the parent handed to
+    chain = [CHAIN[0], evilLink];
+    request={op:"transfer",resource:"/accounts/alice/checking",args:{amount:500000}};
+    popSigner=WORKER;
+  }
+  await decide(chain, trusted, request, popSigner);
+}
+
+async function decide(chain, trusted, request, popSigner){
+  setSending(true);
+  const pop = await popFor(chain, popSigner, request);
+  // travel beat
+  await new Promise(r=>setTimeout(r, 260));
+  const v = await authorize(chain, trusted, request, pop);
+  paint(v);
+  setSending(false);
+}
+
+function setSending(b){ $("#send").disabled=b; }
+function paint(v){
+  const stamp=$("#stamp"); stamp.className="stamp "+(v.ok?"allow":"block")+" pop";
+  stamp.textContent = v.ok?"Authorized":"Blocked";
+  $("#vreason").textContent = v.reason;
+  $("#vsub").textContent = v.sub||"";
+  const c=$("#checks"); c.hidden=false; c.innerHTML="";
+  for(const ch of v.checks){
+    const d=document.createElement("div"); d.className="check "+(ch.s==="ok"?"ok":"no");
+    d.innerHTML='<span class="ic">'+(ch.s==="ok"?"✓":"✕")+'</span><span class="ct">'+ch.t+'</span>';
+    c.appendChild(d);
+  }
+}
+
+/* manual controls */
+const state={op:"transfer",acct:"alice",amount:40};
+function segHandler(sel, key){
+  document.querySelectorAll(sel+" button").forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll(sel+" button").forEach(x=>x.setAttribute("aria-pressed","false"));
+      b.setAttribute("aria-pressed","true"); state[key]=b.dataset[key];
+    };
+  });
+}
+segHandler("#opSeg","op"); segHandler("#acctSeg","acct");
+$("#amt").addEventListener("input",e=>{state.amount=+e.target.value; $("#amtVal").textContent="$"+state.amount;});
+$("#send").addEventListener("click",()=>{
+  clearBroken();
+  const request={op:state.op, resource:"/accounts/"+state.acct+"/checking", args:{amount:state.amount}};
+  decide(CHAIN, ROOT, request, WORKER);
+});
+document.querySelectorAll(".preset").forEach(p=>p.addEventListener("click",()=>runScenario(p.dataset.s)));
+
+/* tech dump + tamper */
+async function dump(){
+  const ids=[]; for(const L of CHAIN) ids.push((await linkId(L)).slice(0,16));
+  const short=h=>h.slice(0,16)+"…";
+  const t=
+`<span class="k">root  (Alice)</span>  ${short(ROOT)}
+<span class="k">muhuri id</span>     ${(await credId(CHAIN)).slice(0,16)}…
+
+<span class="k">link 0</span>  ${short(ROOT)} → ${short(ORCH)}
+        scope : transfer|read on /accounts/alice/ , ≤ $1000
+        sig   : ${CHAIN[0].sig.slice(0,32)}…
+<span class="k">link 1</span>  ${short(ORCH)} → ${short(WORKER)}
+        scope : ≤ $${TAMPERED?9999:50}
+        sig   : ${CHAIN[1].sig.slice(0,32)}…`;
+  $("#techDump").innerHTML=t;
+}
+$("#tamperBtn").addEventListener("click",async()=>{
+  TAMPERED=true;
+  // rewrite the cap in the signed body WITHOUT re-signing (forgery attempt)
+  CHAIN[1].cav=[{t:"max_amount",limit:9999}];
+  await dump();
+  $("#drawer").open=true;
+  const request={op:"transfer",resource:"/accounts/alice/checking",args:{amount:900}};
+  decide(CHAIN, ROOT, request, WORKER);
+});
+$("#restoreBtn").addEventListener("click",async()=>{ TAMPERED=false; clearBroken(); await rebuild(); await dump();
+  $("#stamp").className="stamp idle"; $("#stamp").textContent="ready";
+  $("#vreason").textContent="Restored. Send a request to see what happens."; $("#vsub").textContent=""; $("#checks").hidden=true;});
+
+boot();
+</script>
+</body>
+</html>
