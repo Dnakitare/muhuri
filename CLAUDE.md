@@ -70,6 +70,14 @@ test. The suite already encodes each; run it before and after any change.
    reject. Never silently ignore a constraint you don't understand.
 7. **Fixed cipher suite.** Ed25519 + SHA-256, no algorithm negotiation. The `v` field is
    for future migration, not runtime agility. Do not add an `alg` selector.
+8. **Reject degenerate keys.** [AUDIT CRYPTO-1] `verify_sig` and `mint`/`attenuate`/
+   `requires_approval` reject low-order (torsion) and non-canonical Ed25519 encodings via
+   `keys.is_acceptable_key`. Raw Ed25519 verify accepts them and they admit a universal
+   forgery (`R=identity, S=0`). Never call `crypto.verify` on a public key without this gate.
+9. **Replay protection is required, not optional.** [AUDIT AUTHZ-1] `authorize` requires a
+   `nonce_store` (or the explicit `NO_REPLAY_PROTECTION` sentinel); omitting it errors.
+   Single-use nonces are consumed only AFTER the signature verifies, and only for approvals
+   actually bound to a caveat. Do not reintroduce a silent off-by-default path.
 
 ## Conventions
 
@@ -85,7 +93,9 @@ test. The suite already encodes each; run it before and after any change.
 
 - Verified: 92 tests pass (27 adversarial + 6 property + 15 vector + 44 red-team regression); CLI +
   browser demos run clean; all R1–R7 findings fixed and re-probed; C1–C4 confusion
-  attacks blocked. See `AUDIT.md`.
+  attacks blocked. An independent multi-agent red-team (5 rounds, June 2026) then found and fixed
+  3 High + several medium/low issues, including a universal forgery the prior review missed; see
+  the "Independent red-team" section of `AUDIT.md`.
 - Honest gaps (read `AUDIT.md` "Residual & accepted risks"): no instant global offline
   revocation; provenance honesty depends on the signer; `NonceStore` is in-memory;
   audience binding is opt-in; needs an independent professional crypto audit + a formal

@@ -166,7 +166,7 @@
   <h1>Watch an AI agent get stopped from stealing money.</h1>
   <p class="lede">An assistant is allowed to move <b>up to $50</b> from Alice's account — and nothing more.
   Every request below is checked by real cryptography running <b>in your browser</b>.
-  Try to break it. You can't.</p>
+  Run the attacks below. Each one is blocked, live.</p>
 
   <!-- THE CHAIN -->
   <div class="chain-card">
@@ -230,6 +230,10 @@
       <p class="tech-note">No mock-ups. The chain below was generated in your browser with real
       <span id="algoName">Ed25519</span> keypairs. Each link is signed by the party that grants it; the
       gate re-verifies every signature on every request. Edit the credential and the math notices.</p>
+      <p class="tech-note" style="opacity:.8">This page is an <b>illustrative model</b>, not the
+      reference implementation. The audited reference is the Python library in this repo: it uses a
+      canonical-CBOR wire format (this demo uses simplified JSON) and additionally enforces single-use
+      replay protection and low-order-key rejection. See <code>SPEC.md</code> and <code>AUDIT.md</code>.</p>
       <div class="kv" id="techDump">loading…</div>
       <div class="tamper">
         <span class="t-lbl"><b>Tamper test:</b> rewrite the worker's $50 cap to $9,999 in the signed credential, then send a $900 transfer.</span>
@@ -340,7 +344,7 @@ async function authorize(chain, trustedRoot, request, pop){
   for(const c of effCav){
     if(c.t==="op_in" && !c.ops.includes(request.op)){ add("no","Operation “"+request.op+"” is outside the granted scope"); return verdict(false,"Outside granted scope","The credential never allowed this operation.",checks);}
     if(c.t==="resource_prefix" && !request.resource.startsWith(c.prefix)){ add("no","Resource “"+request.resource+"” is outside “"+c.prefix+"”"); return verdict(false,"Outside granted scope","This credential is only valid on Alice's own accounts.",checks);}
-    if(c.t==="max_amount"){ const v=request.args.amount; if(v==null){ add("no","Amount required but missing"); return verdict(false,"Outside granted scope","",checks);} if(v>c.limit){ add("no","$"+v+" exceeds the $"+c.limit+" limit"); return verdict(false,"Over the limit","The amount is larger than what was delegated.",checks);} }
+    if(c.t==="max_amount"){ const v=request.args.amount; if(v==null){ add("no","Amount required but missing"); return verdict(false,"Outside granted scope","",checks);} if(!Number.isFinite(v)){ add("no","Amount is not a finite number"); return verdict(false,"Outside granted scope","A non-finite amount (NaN/Infinity) was rejected.",checks);} if(!(v<=c.limit)){ add("no","$"+v+" exceeds the $"+c.limit+" limit"); return verdict(false,"Over the limit","The amount is larger than what was delegated.",checks);} }
   }
   add("ok","Action is within scope (the AND of every hop)");
   return verdict(true,"Authorized","Tied back to Alice's permission, cryptographically.",checks);

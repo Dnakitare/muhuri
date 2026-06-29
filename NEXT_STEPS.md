@@ -6,6 +6,25 @@ run `python -m pytest tests/ -q` before and after every change.
 
 ---
 
+## Status (updated 2026-06-28)
+
+**Done:** P0.1 cross-impl vectors (`tests/vectors.json` + `tools/gen_vectors.py`),
+P0.2 property tests (`tests/test_properties.py`), P0.3 CI (`.github/workflows/ci.yml`),
+P3.10 standards note (`docs/standards.md`), P4.11–12 demo recording + demo-first README
+(`docs/muhuri-demo.gif`). An independent 5-round red-team also hardened the library (see
+`AUDIT.md` "Independent red-team"); `nonce_store` is now required and low-order keys are
+rejected, so part of P1.5's intent (don't ship an insecure default) is already met.
+
+**Still open / recommended next, in order:** P1.4 durable `NonceStore` backend (the
+most-cited residual; in-memory today), P1.5 `authorize_request` convenience that requires
+an explicit audience (audience binding is still opt-in), P1.6 revocation oracle, then the
+P2 Rust/WASM and P3 middleware work. **Gate before any production trust:** an independent
+professional cryptographic review (the hand-rolled Ed25519 point math in `keys.py`, the
+CBOR decoder-differential, and the `h256` framing are unproven) plus a formal model of the
+authorization properties. Those are external assurance, not open exploits.
+
+---
+
 ## P0 — Make the claims independently checkable
 
 These raise external credibility the most for the least work.
